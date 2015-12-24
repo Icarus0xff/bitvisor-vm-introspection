@@ -3,6 +3,7 @@
 *.ko
 *.obj
 *.elf
+*.d
 
 # Precompiled Headers
 *.gch
@@ -30,3 +31,18 @@
 
 # Debug files
 *.dSYM/
+
+#Temp files
+*~
+*#
+
+#bitvisor
+*.flags
+*.depends
+*.bin
+*.objects
+.config
+bitvisor.map
+defconfig
+process/.boptions
+*.bin.s
