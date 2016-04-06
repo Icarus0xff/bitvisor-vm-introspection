@@ -19,8 +19,6 @@ subdirs-1 += core drivers
 subdirs-$(CONFIG_STORAGE) += storage
 subdirs-$(CONFIG_VPN) += vpn
 subdirs-$(CONFIG_IDMAN) += idman
-subdirs-1 += net
-subdirs-$(CONFIG_IP) += ip
 asubdirs-$(CONFIG_CRYPTO) += crypto
 psubdirs-1 += process
 

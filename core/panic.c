@@ -73,6 +73,7 @@ static u8 bios_area_orig[BIOS_AREA_SIZE];
 #ifndef TTY_SERIAL
 static u8 bios_area_panic[BIOS_AREA_SIZE];
 #endif
+static void *panicmem;
 
 static void
 copy_bios_area (void *save, void *load)
@@ -400,23 +401,14 @@ call_panic_shell (void)
 {
 	int d;
 	static bool flag_free = false, flag_shell = false;
-	ulong cr0;
 
-	if (config.vmm.panic_reboot) {
-		ttylog_copy_to_panicmem ();
-		mm_flush_wb_cache ();
-		usleep (1000000);
-		asm_rdcr0 (&cr0);
-		cr0 = (cr0 & ~CR0_NW_BIT) | CR0_CD_BIT;
-		asm_wridtr (0, 0);
-		asm_wrcr0 (cr0);
-		asm_wbinvd ();
-		do_panic_reboot ();
-	}
 	if (!flag_free) {
 		flag_free = true;
-		mm_force_unlock ();
-		mm_free_panicmem ();
+		if (panicmem) {
+			mm_force_unlock ();
+			free (panicmem);
+			panicmem = NULL;
+		}
 	}
 	d = panic_process;
 	if (d >= 0 && config.vmm.shell && !flag_shell &&
@@ -603,6 +595,7 @@ panic_init_global (void)
 	spinlock_init (&panic_lock);
 	panic_process = -1;
 	bios_area_saved = false;
+	panicmem = NULL;
 	paniccpu = -1;
 }
 
@@ -613,7 +606,7 @@ panic_init_global3 (void)
 		copy_bios_area (bios_area_orig, NULL);
 		bios_area_saved = true;
 	}
-	ttylog_copy_from_panicmem ();
+	panicmem = alloc (1048576);
 }
 
 static void

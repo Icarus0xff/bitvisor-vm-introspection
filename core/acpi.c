@@ -389,10 +389,8 @@ save_mcfg (void)
 	struct mcfg *d;
 
 	d = find_entry (MCFG_SIGNATURE);
-	if (d) {
-		saved_mcfg = alloc (d->header.length);
-		memcpy (saved_mcfg, d, d->header.length);
-	}
+	saved_mcfg = alloc (d->header.length);
+	memcpy (saved_mcfg, d, d->header.length);
 }
 
 static void
@@ -419,9 +417,9 @@ acpi_pm1_sleep (u32 v)
 	struct facs *facs;
 	u32 new_waking_vector;
 	u32 old_waking_vector;
-	int i;
 #ifdef ACPI_DSDT
 	bool m[6];
+	int i;
 	u8 n;
 #endif
 
@@ -509,7 +507,7 @@ acpi_smi_monitor (enum iotype type, u32 port, void *data)
 	if (current->acpi.smi_hook_disabled)
 		panic ("SMI monitor called while SMI hook is disabled");
 	current->vmctl.paging_map_1mb ();
-	current->vmctl.iopass (smi_cmd, true);
+	current->vmctl.extern_iopass (current, smi_cmd, true);
 	current->acpi.smi_hook_disabled = true;
 	return IOACT_RERUN;
 }
@@ -520,7 +518,7 @@ acpi_smi_hook (void)
 	if (!current->vcpu0->acpi.iopass)
 		return;
 	if (current->acpi.smi_hook_disabled) {
-		current->vmctl.iopass (smi_cmd, false);
+		current->vmctl.extern_iopass (current, smi_cmd, false);
 		current->acpi.smi_hook_disabled = false;
 	}
 }
@@ -851,12 +849,8 @@ acpi_init_global (void)
 	if (0)
 		printf ("PM1a control port is 0x%X\n", pm1a_cnt_ioaddr);
 	q = find_entry_in_rsdt (FACP_SIGNATURE);
-	if (q) {
-		get_facs_addr (&facs_addr[2], q);
-		remove_dup_facs_addr (facs_addr, 4);
-	} else {
-		remove_dup_facs_addr (facs_addr, 2);
-	}
+	get_facs_addr (&facs_addr[2], q);
+	remove_dup_facs_addr (facs_addr, 4);
 	pm1a_cnt_found = true;
 	save_mcfg ();
 }

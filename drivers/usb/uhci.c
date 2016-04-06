@@ -47,7 +47,7 @@ u32 vmm_start_inf() ;
 u32 vmm_term_inf() ;
 #endif // of VTD_TRANS
 
-static const char driver_name[] = "uhci";
+static const char driver_name[] = "uhci_generic_driver";
 static const char driver_longname[] = 
 	"Generic UHCI para pass-through driver 1.0";
 static const char virtual_model[40] = 
@@ -349,8 +349,10 @@ notset_iobase:
 static struct pci_driver uhci_driver = {
 	.name		= driver_name,
 	.longname	= driver_longname,
+	/* match with any VendorID:DeviceID */
+	.id		= { PCI_ID_ANY, PCI_ID_ANY_MASK },
 	/* class = UHCI, subclass = UHCI (not EHCI) */
-	.device		= "class_code=0c0300",
+	.class		= { 0x0C0300, 0xFFFFFF },
 	/* called when a new PCI ATA device is found */
 	.new		= uhci_new,		
 	/* called when a config register is read */
@@ -365,6 +367,8 @@ static struct pci_driver uhci_driver = {
 void 
 uhci_init(void) __initcode__
 {
+	if (!config.vmm.driver.usb.uhci)
+		return;
 	pci_register_driver(&uhci_driver);
 	return;
 }

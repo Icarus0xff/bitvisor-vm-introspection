@@ -29,7 +29,6 @@
 
 #include "asm.h"
 #include "assert.h"
-#include "config.h"
 #include "constants.h"
 #include "cpu.h"
 #include "current.h"
@@ -142,12 +141,6 @@ svm_reset (void)
 	*current->u.svm.cr4 = 0;
 	current->u.svm.vi.vmcb->cr4 = svm_paging_apply_fixed_cr4 (0);
 	current->u.svm.vi.vmcb->efer = MSR_IA32_EFER_SVME_BIT;
-	current->u.svm.svme = false;
-	current->u.svm.vm_cr = MSR_AMD_VM_CR_DIS_A20M_BIT |
-		MSR_AMD_VM_CR_LOCK_BIT;
-	if (!config.vmm.unsafe_nested_virtualization)
-		current->u.svm.vm_cr |= MSR_AMD_VM_CR_SVMDIS_BIT;
-	current->u.svm.hsave_pa = 0;
 	current->u.svm.lme = 0;
 	svm_msr_update_lma ();
 	svm_paging_updatecr3 ();
@@ -158,36 +151,18 @@ static void
 svm_vmcb_init (void)
 {
 	struct vmcb *p;
-	struct svm_io *io;
-	struct svm_msrbmp *msrbmp;
 
 	current->u.svm.saved_vmcb = NULL;
 	alloc_page ((void **)&current->u.svm.vi.vmcb,
 		    &current->u.svm.vi.vmcb_phys);
-	/* The iobmp initialization must be executed during
-	 * current->vcpu0 == current, because the iobmp is accessed by
-	 * vmctl.iopass() that is called from set_iofunc() during
-	 * current->vcpu0 == current. */
-	if (current->vcpu0 == current) {
-		io = alloc (sizeof *io);
-		alloc_pages (&io->iobmp, &io->iobmp_phys, 3);
-		memset (io->iobmp, 0xFF, PAGESIZE * 3);
-	} else {
-		while (!(io = current->vcpu0->u.svm.io))
-			asm_pause ();
-	}
-	current->u.svm.io = io;
-	if (current->vcpu0 == current) {
-		msrbmp = alloc (sizeof *msrbmp);
-		alloc_pages (&msrbmp->msrbmp, &msrbmp->msrbmp_phys, 2);
-		memset (msrbmp->msrbmp, 0xFF, PAGESIZE * 2);
-		/* passthrough writing to PATCH_LOADER MSR (0xC0010020) */
-		((u8 *)msrbmp->msrbmp)[0x1008] &= ~2;
-	} else {
-		while (!(msrbmp = current->vcpu0->u.svm.msrbmp))
-			asm_pause ();
-	}
-	current->u.svm.msrbmp = msrbmp;
+	alloc_pages (&current->u.svm.io.iobmp,
+		     &current->u.svm.io.iobmp_phys, 3);
+	alloc_pages (&current->u.svm.msr.msrbmp,
+		     &current->u.svm.msr.msrbmp_phys, 2);
+	memset (current->u.svm.io.iobmp, 0xFF, PAGESIZE * 3);
+	memset (current->u.svm.msr.msrbmp, 0xFF, PAGESIZE * 2);
+	/* passthrough writing to PATCH_LOADER MSR (0xC0010020) */
+	((u8 *)current->u.svm.msr.msrbmp)[0x1008] &= ~2;
 	p = current->u.svm.vi.vmcb;
 	memset (p, 0, PAGESIZE);
 	p->intercept_read_cr = ~0x104;
@@ -205,12 +180,9 @@ svm_vmcb_init (void)
 	p->intercept_vmrun = 1;
 	p->intercept_vmmcall = 1;
 	p->intercept_cpuid = 1;
-	p->intercept_clgi = 1;
-	p->intercept_stgi = 1;
-	p->iopm_base_pa = io->iobmp_phys;
-	p->msrpm_base_pa = msrbmp->msrbmp_phys;
-	p->guest_asid = currentcpu->svm.nasid > 2 ?
-		currentcpu->svm.nasid - 1 : 1; /* FIXME */
+	p->iopm_base_pa = current->u.svm.io.iobmp_phys;
+	p->msrpm_base_pa = current->u.svm.msr.msrbmp_phys;
+	p->guest_asid = 1;	/* FIXME */
 	p->tlb_control = VMCB_TLB_CONTROL_FLUSH_TLB;
 	svm_seg_reset (p);
 	p->cpl = 0;
@@ -265,11 +237,6 @@ svm_init (void)
 		currentcpu->svm.flush_by_asid = true;
 	else
 		currentcpu->svm.flush_by_asid = false;
-	if (d & CPUID_EXT_A_EDX_NRIP_SAVE_BIT)
-		currentcpu->svm.nrip_save = true;
-	else
-		currentcpu->svm.nrip_save = false;
-	currentcpu->svm.nasid = b;
 }
 
 void

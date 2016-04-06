@@ -69,6 +69,7 @@ extern u64 memorysize, vmmsize;
 phys_t sym_to_phys (void *sym);
 bool phys_in_vmm (u64 phys);
 virt_t phys_to_virt (phys_t phys);
+int vrit_to_phys (virt_t virt, phys_t *phys);
 int num_of_available_pages (void);
 u32 getsysmemmap (u32 n, u64 *base, u64 *len, u32 *type);
 u32 getfakesysmemmap (u32 n, u64 *base, u64 *len, u32 *type);
@@ -76,8 +77,6 @@ void mm_flush_wb_cache (void);
 void mm_force_unlock (void);
 void __attribute__ ((section (".entry.text")))
 uefi_init_get_vmmsize (u32 *vmmsize, u32 *align);
-void *mm_get_panicmem (int *len);
-void mm_free_panicmem (void);
 
 /* process */
 int mm_process_alloc (phys_t *phys);

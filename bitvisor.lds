@@ -30,7 +30,6 @@ SECTIONS {
 		__process_builtin = .;
 		*(.processes)
 		__process_builtin_end = .;
-		dataend = .;
 	}
 	.bss : AT (phys + (bss - head)) {
 		bss = .;

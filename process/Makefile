@@ -1,13 +1,11 @@
 CFLAGS += -Iprocess/lib
 
-bins-1 += debug help init log panic recvexample sendexample sendint
+bins-1 += debug help init log panic recvexample sendexample sendint test
 bins-1 += serialtest shell
 bins-$(CONFIG_IDMAN) += idman
 bins-$(CONFIG_STORAGE) += storage
 bins-$(CONFIG_VPN) += vpn
 asubdirs-1 += lib
-bins-$(CONFIG_IP) += echoctl
-bins-$(CONFIG_PCI_MONITOR) += monitor
 
 debug-objs = debug.o
 help-objs = help.o
@@ -25,5 +23,4 @@ storage-objs = storage.o
 storage-libs = storage/lib/$(outa) crypto/$(outa)
 vpn-objs = vpn.o
 vpn-libs = vpn/lib/$(outa) crypto/$(outa)
-echoctl-objs = echoctl.o
-monitor-objs = monitor.o
+test-objs = test.o

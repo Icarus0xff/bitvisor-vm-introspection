@@ -31,6 +31,12 @@
 #define _PCI_H
 #include <core.h>
 
+struct idmask { u32 id, mask; };
+#define idmask_match(a, b) ((a & b.mask) == b.id)
+
+#define PCI_ID_ANY	0
+#define PCI_ID_ANY_MASK	0
+
 #define PCI_CONFIG_REGS8_NUM	256
 #define PCI_CONFIG_REGS32_NUM	(PCI_CONFIG_REGS8_NUM / sizeof(u32))
 
@@ -100,8 +106,6 @@ struct pci_config_space {
 #define PCI_CONFIG_BASE_ADDRESS_IOSPACE		1
 #define PCI_CONFIG_BASE_ADDRESS_IOMASK		0x0000FFFC
 #define PCI_CONFIG_BASE_ADDRESS_MEMMASK		0xFFFFFFF0
-#define PCI_CONFIG_BASE_ADDRESS_TYPEMASK	0x00000006
-#define PCI_CONFIG_BASE_ADDRESS_TYPE64		0x00000004
 
 #define PCI_CONFIG_SPACE_GET_OFFSET(regname) offsetof(struct pci_config_space, regname)
 #define PCI_CONFIG_ADDRESS_GET_REG_NO(regname) (offsetof(struct pci_config_space, regname) / sizeof(u32))
@@ -119,7 +123,6 @@ struct pci_config_space {
 #define PCI_CONFIG_COMMAND_MEMENABLE	0x2
 
 struct pci_config_mmio_data;
-struct token;
 
 // data structures
 struct pci_device {
@@ -127,26 +130,17 @@ struct pci_device {
 	pci_config_address_t address;
 	void *host;
 	struct pci_driver *driver;
-	char **driver_options;
 	struct pci_config_space config_space;
 	u32 base_address_mask[PCI_CONFIG_BASE_ADDRESS_NUMS+1];
 	u8 in_base_address_mask_emulation;
-	u8 base_address_mask_valid;
+	bool conceal;
 	struct pci_config_mmio_data *config_mmio;
-	int initial_bus_no;
-	struct {
-		int yes;
-		int initial_secondary_bus_no;
-		u8 secondary_bus_no, subordinate_bus_no;
-	} bridge;
-	struct pci_device *parent_bridge;
-	int disconnect;
-	u8 fake_command_mask, fake_command_fixed, fake_command_virtual;
 };
 
 struct pci_driver {
 	LIST_DEFINE(pci_driver_list);
-	char *device;
+	struct idmask id;
+	struct idmask class;
 	void (*new)(struct pci_device *dev);
 	int (*config_read) (struct pci_device *dev, u8 iosize, u16 offset,
 			    union mem *data);
@@ -156,19 +150,6 @@ struct pci_driver {
 		unsigned int use_base_address_mask_emulation: 1;
 	} options;
 	const char *name, *longname;
-	char *driver_options;
-};
-
-enum pci_bar_info_type {
-	PCI_BAR_INFO_TYPE_NONE,
-	PCI_BAR_INFO_TYPE_MEM,
-	PCI_BAR_INFO_TYPE_IO,
-};
-
-struct pci_bar_info {
-	enum pci_bar_info_type type;
-	u64 base;
-	u32 len;
 };
 
 // exported functions
@@ -189,8 +170,7 @@ extern void pci_write_config_data8(pci_config_address_t addr, int offset, u8 dat
 extern void pci_write_config_data16(pci_config_address_t addr, int offset, u16 data);
 extern void pci_write_config_data32(pci_config_address_t addr, int offset, u32 data);
 
-struct pci_device *pci_possible_new_device (pci_config_address_t addr,
-					    struct pci_config_mmio_data *mmio);
+struct pci_device *pci_possible_new_device (pci_config_address_t addr);
 void pci_readwrite_config_mmio (struct pci_config_mmio_data *p, bool wr,
 				uint bus_no, uint device_no, uint func_no,
 				uint offset, uint iosize, void *data);
@@ -200,22 +180,5 @@ void pci_read_config_mmio (struct pci_config_mmio_data *p, uint bus_no,
 void pci_write_config_mmio (struct pci_config_mmio_data *p, uint bus_no,
 			    uint device_no, uint func_no, uint offset,
 			    uint iosize, void *data);
-void pci_get_bar_info (struct pci_device *pci_device, int n,
-		       struct pci_bar_info *bar_info);
-int pci_get_modifying_bar_info (struct pci_device *pci_device,
-				struct pci_bar_info *bar_info, u8 iosize,
-				u16 offset, union mem *data);
-struct pci_driver *pci_find_driver_for_device (struct pci_device *device);
-struct pci_driver *pci_find_driver_by_token (struct token *name);
-int pci_driver_option_get_int (char *option, char **e, int base);
-bool pci_driver_option_get_bool (char *option, char **e);
-void pci_dump_pci_dev_list (void);
-struct pci_device *pci_get_bridge_from_bus_no (u8 bus_no);
-void pci_set_bridge_from_bus_no (u8 bus_no, struct pci_device *bridge);
-int pci_reconnect_device (struct pci_device *dev, pci_config_address_t addr,
-			  struct pci_config_mmio_data *mmio);
-void pci_set_bridge_io (struct pci_device *pci_device);
-void pci_set_bridge_fake_command (struct pci_device *pci_device, u8 mask,
-				  u8 fixed);
 
 #endif

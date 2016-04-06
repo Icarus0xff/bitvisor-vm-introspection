@@ -759,4 +759,4 @@ struct domain *create_dom(unsigned short int domid)
 	return 0;
 }
 
-INITFUNC ("driver95", iommu_setup);
+VTD_INIT(iommu_setup);

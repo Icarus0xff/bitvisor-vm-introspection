@@ -51,5 +51,6 @@ ulong vt_paging_apply_fixed_cr0 (ulong val);
 ulong vt_paging_apply_fixed_cr4 (ulong val);
 void vt_paging_pg_change (void);
 void vt_paging_start (void);
+void vt_set_mem_test (u64 gphys, int count);
 
 #endif

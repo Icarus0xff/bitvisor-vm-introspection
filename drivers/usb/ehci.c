@@ -36,13 +36,12 @@
 #include <core/mmio.h>
 #include <core/timer.h>
 #include "pci.h"
-#include "pci_conceal.h"
 #include "usb.h"
 #include "usb_device.h"
 #include "ehci.h"
 #include "ehci_debug.h"
 
-static const char driver_name[] = "ehci";
+static const char driver_name[] = "ehci_generic_driver";
 static const char driver_longname[] = 
 	"Generic EHCI para pass-through driver 0.9";
 static const char virtual_model[40] = 
@@ -527,7 +526,8 @@ ehci_config_write (struct pci_device *pci_device, u8 iosize, u16 offset,
 static struct pci_driver ehci_driver = {
 	.name		= driver_name,
 	.longname	= driver_longname,
-	.device		= "class_code=0c0320",
+	.id		= { PCI_ID_ANY, PCI_ID_ANY_MASK },
+	.class		= { 0x0C0320, 0xFFFFFF },
 	.new		= ehci_new,	
 	.config_read	= ehci_config_read,
 	.config_write	= ehci_config_write,
@@ -555,7 +555,6 @@ ehci_conceal_new(struct pci_device *pci_device)
 	void *handle;
 
 	printf("An EHCI host controller found. Disable it.\n");
-	pci_conceal_new (pci_device);
 	iobase = pci_device->config_space.base_address[0];
 	if ((iobase == 0) || (iobase >= 0xffffffdeU))
 		return;
@@ -584,13 +583,34 @@ ehci_conceal_new(struct pci_device *pci_device)
 	return;
 }
 
+static int
+ehci_conceal_config_read (struct pci_device *pci_device, u8 iosize,
+			  u16 offset, union mem *data)
+{
+	ulong zero = 0UL;
+
+	/* provide fake values 
+	   for reading the PCI configration space. */
+	memcpy (data, &zero, iosize);
+	return CORE_IO_RET_DONE;
+}
+
+static int
+ehci_conceal_config_write (struct pci_device *pci_device, u8 iosize,
+			   u16 offset, union mem *data)
+{
+	/* do nothing, ignore any writing. */
+	return CORE_IO_RET_DONE;
+}
+
 static struct pci_driver ehci_conceal_driver = {
-	.name		= "ehci_conceal",
+	.name		= driver_name,
 	.longname	= driver_longname,
-	.device		= "class_code=0c0320",
+	.id		= { PCI_ID_ANY, PCI_ID_ANY_MASK },
+	.class		= { 0x0C0320, 0xFFFFFF },
 	.new		= ehci_conceal_new,	
-	.config_read	= pci_conceal_config_read,
-	.config_write	= pci_conceal_config_write,
+	.config_read	= ehci_conceal_config_read,
+	.config_write	= ehci_conceal_config_write,
 };
 
 /**
@@ -599,8 +619,10 @@ static struct pci_driver ehci_conceal_driver = {
 void 
 ehci_init(void) __initcode__
 {
-	pci_register_driver(&ehci_conceal_driver);
-	pci_register_driver(&ehci_driver);
+	if (config.vmm.driver.concealEHCI)
+		pci_register_driver(&ehci_conceal_driver);
+	else if (config.vmm.driver.usb.ehci)
+		pci_register_driver(&ehci_driver);
 	return;
 }
 PCI_DRIVER_INIT(ehci_init);

@@ -30,11 +30,7 @@
 #ifndef _PCI_CONCEAL_H
 #define _PCI_CONCEAL_H
 
-struct pci_driver *pci_conceal_new_device (struct pci_device *dev);
-int pci_conceal_config_read (struct pci_device *pci_device, u8 iosize,
-			     u16 offset, union mem *data);
-int pci_conceal_config_write (struct pci_device *pci_device, u8 iosize,
-			      u16 offset, union mem *data);
-void pci_conceal_new (struct pci_device *pci_device);
+bool pci_conceal_new_device (struct pci_device *dev);
+int pci_conceal_config_data_handler (core_io_t io, union mem *data, void *arg);
 
 #endif

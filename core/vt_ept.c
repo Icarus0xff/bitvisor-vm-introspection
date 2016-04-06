@@ -39,6 +39,7 @@
 #include "vt_main.h"
 #include "vt_paging.h"
 #include "vt_regs.h"
+#include "printf.h"
 
 #define NUM_OF_EPTBL	1024
 #define EPTE_READ	0x1
@@ -73,9 +74,12 @@ vt_ept_init (void)
 		       VMCS_EPT_POINTER_EPT_WB | VMCS_EPT_PAGEWALK_LENGTH_4);
 }
 
-static void
-vt_ept_map_page (bool write, u64 gphys)
+
+
+void
+vt_ept_map_page_privilege (bool write, u64 gphys)
 {
+  //printf("%s\n", __func__);
 	int l;
 	bool fakerom;
 	u64 hphys;
@@ -85,6 +89,9 @@ vt_ept_map_page (bool write, u64 gphys)
 
 	ept = current->u.vt.ept;
 	q = ept->ncr3tbl;
+	/*gphys = 0xfffff000;
+	  gfn = 
+	 */
 	q += (gphys >> (EPT_LEVELS * 9 + 3)) & 0x1FF;
 	p = q;
 	for (l = EPT_LEVELS - 1; l > 0; l--) {
@@ -105,7 +112,8 @@ vt_ept_map_page (bool write, u64 gphys)
 		p = (u64 *)phys_to_virt (e);
 	}
 	for (; l > 0; l--) {
-		*p = ept->tbl_phys[ept->cnt] | EPTE_READEXEC | EPTE_WRITE;
+	        *p = ept->tbl_phys[ept->cnt] | EPTE_READEXEC | EPTE_WRITE;
+		//*p = ept->tbl_phys[ept->cnt] & (~(0x7));
 		p = ept->tbl[ept->cnt++];
 		memset (p, 0, PAGESIZE);
 		p += (gphys >> (9 * l + 3)) & 0x1FF;
@@ -118,6 +126,77 @@ vt_ept_map_page (bool write, u64 gphys)
 	if (fakerom)
 		hattr &= ~EPTE_WRITE;
 	*p = hphys | hattr;
+	*p &= ~(0x7);
+}
+
+static void
+vt_ept_map_page (bool write, u64 gphys)
+{
+	int l;
+	bool fakerom;
+	u64 hphys;
+	u32 hattr;
+	struct vt_ept *ept;
+	u64 *p, *q, e;
+
+	ept = current->u.vt.ept;
+	q = ept->ncr3tbl;
+	/*gphys = 0xfffff000;
+	  gfn = 
+	 */
+	q += (gphys >> (EPT_LEVELS * 9 + 3)) & 0x1FF;
+	p = q;
+	for (l = EPT_LEVELS - 1; l > 0; l--) {
+		e = *p;
+		if (!(e & EPTE_READ)) {
+			if (ept->cnt + l > NUM_OF_EPTBL) {
+				/* printf ("!"); */
+				memset (ept->ncr3tbl, 0, PAGESIZE);
+				ept->cnt = 0;
+				vt_paging_flush_guest_tlb ();
+				l = EPT_LEVELS - 1;
+				p = q;
+			}
+			break;
+		}
+		e &= ~PAGESIZE_MASK;
+		e |= (gphys >> (9 * l)) & 0xFF8;
+		p = (u64 *)phys_to_virt (e);
+	}
+	for (; l > 0; l--) {
+	        *p = ept->tbl_phys[ept->cnt] | EPTE_READEXEC | EPTE_WRITE;
+		//*p = ept->tbl_phys[ept->cnt] & (~(0x7));
+		p = ept->tbl[ept->cnt++];
+		memset (p, 0, PAGESIZE);
+		p += (gphys >> (9 * l + 3)) & 0x1FF;
+	}
+	hphys = current->gmm.gp2hp (gphys, &fakerom) & ~PAGESIZE_MASK;
+	if (fakerom && write)
+		panic ("EPT: Writing to VMM memory.");
+	hattr = (cache_get_gmtrr_type (gphys) << EPTE_MT_SHIFT) |
+		EPTE_READEXEC | EPTE_WRITE;
+	if (fakerom)
+		hattr &= ~EPTE_WRITE;
+	*p = hphys | hattr;
+	//*p &= ~(0x7);
+}
+
+int 
+vt_ept_set_mem_region(u64 gphys, int count){
+  int i;
+  for (i = 1; i <= count; ++i)
+	  {
+	    mmio_lock();
+	    if(!mmio_access_page (gphys, true)){
+	      //vt_ept_set_page_privilege(gphys);
+	      //printf("hi there!\n");
+	      vt_ept_map_page_privilege(true, gphys);
+	    }
+	    mmio_unlock();
+	    gphys += PAGESIZE;
+	  }  
+        
+	return 0;   
 }
 
 void
@@ -195,6 +274,7 @@ vt_ept_extern_mapsearch (struct vcpu *p, phys_t start, phys_t end)
 void
 vt_ept_map_1mb (void)
 {
+        printf("%s\n", __func__);
 	ulong gphys;
 
 	vt_ept_clear_all ();

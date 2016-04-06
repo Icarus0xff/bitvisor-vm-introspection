@@ -72,7 +72,7 @@ struct thread_data {
 static struct thread_data td[MAXNUM_OF_THREADS];
 static LIST1_DEFINE_HEAD (struct thread_data, td_free);
 static LIST1_DEFINE_HEAD (struct thread_data, td_runnable);
-static ticketlock_t thread_lock;
+static spinlock_t thread_lock;
 static void *old_stack;
 
 static void
@@ -104,13 +104,13 @@ thread_data_save_and_load (struct thread_data *old, struct thread_data *new)
 tid_t
 thread_gettid (void)
 {
-	return currentcpu->thread.tid;
+	return currentcpu->tid;
 }
 
 static void
 switched (void)
 {
-	ticketlock_unlock (&thread_lock);
+	spinlock_unlock (&thread_lock);
 }
 
 void
@@ -119,7 +119,7 @@ schedule (void)
 	struct thread_data *d;
 	tid_t oldtid, newtid;
 
-	ticketlock_lock (&thread_lock);
+	spinlock_lock (&thread_lock);
 	if (old_stack) {
 		free (old_stack);
 		old_stack = NULL;
@@ -129,13 +129,13 @@ schedule (void)
 		    d->cpunum == currentcpu->cpunum)
 			goto found;
 	}
-	ticketlock_unlock (&thread_lock);
+	spinlock_unlock (&thread_lock);
 	return;
 found:
 	LIST1_DEL (td_runnable, d);
-	oldtid = currentcpu->thread.tid;
+	oldtid = currentcpu->tid;
 	newtid = d->tid;
-	currentcpu->thread.tid = newtid;
+	currentcpu->tid = newtid;
 	thread_data_save_and_load (&td[oldtid], d);
 	switch (td[oldtid].state) {
 	case THREAD_EXIT:
@@ -171,13 +171,13 @@ thread_new0 (struct thread_context *c, void *stack)
 	struct thread_data *d;
 	tid_t r;
 
-	ticketlock_lock (&thread_lock);
+	spinlock_lock (&thread_lock);
 	d = LIST1_POP (td_free);
 	ASSERT (d);
 	thread_data_init (d, c, stack, CPUNUM_ANY);
 	LIST1_ADD (td_runnable, d);
 	r = d->tid;
-	ticketlock_unlock (&thread_lock);
+	spinlock_unlock (&thread_lock);
 	return r;
 }
 
@@ -204,10 +204,10 @@ thread_set_state (tid_t tid, enum thread_state state)
 {
 	enum thread_state oldstate;
 
-	ticketlock_lock (&thread_lock);
+	spinlock_lock (&thread_lock);
 	oldstate = td[tid].state;
 	td[tid].state = state;
-	ticketlock_unlock (&thread_lock);
+	spinlock_unlock (&thread_lock);
 	return oldstate;
 }
 
@@ -221,9 +221,9 @@ thread_wakeup (tid_t tid)
 	case THREAD_WILL_STOP:
 		break;
 	case THREAD_STOP:
-		ticketlock_lock (&thread_lock);
+		spinlock_lock (&thread_lock);
 		LIST1_ADD (td_runnable, &td[tid]);
-		ticketlock_unlock (&thread_lock);
+		spinlock_unlock (&thread_lock);
 		break;
 	case THREAD_EXIT:
 	default:
@@ -235,41 +235,39 @@ thread_wakeup (tid_t tid)
 void
 thread_will_stop (void)
 {
-	switch (thread_set_state (currentcpu->thread.tid, THREAD_WILL_STOP)) {
+	switch (thread_set_state (currentcpu->tid, THREAD_WILL_STOP)) {
 	case THREAD_RUN:
 		break;
 	case THREAD_WILL_STOP:
 		printf ("WARNING: thread_will_stop called twice tid=%d\n",
-			currentcpu->thread.tid);
+			currentcpu->tid);
 		break;
 	case THREAD_STOP:
 	case THREAD_EXIT:
 	default:
 		panic ("thread_will_stop: bad state tid=%d state=%d",
-		       currentcpu->thread.tid,
-		       td[currentcpu->thread.tid].state);
+		       currentcpu->tid, td[currentcpu->tid].state);
 	}
 }
 
 void
 thread_exit (void)
 {
-	switch (thread_set_state (currentcpu->thread.tid, THREAD_EXIT)) {
+	switch (thread_set_state (currentcpu->tid, THREAD_EXIT)) {
 	case THREAD_EXIT:
 		printf ("WARNING: thread already exited tid=%d\n",
-			currentcpu->thread.tid);
+			currentcpu->tid);
 		break;
 	case THREAD_RUN:
 		break;
 	case THREAD_WILL_STOP:
 		printf ("thread_exit called after thread_will_stop tid=%d\n",
-			currentcpu->thread.tid);
+			currentcpu->tid);
 		break;
 	case THREAD_STOP:
 	default:
 		panic ("thread_exit: bad state tid=%d state=%d",
-		       currentcpu->thread.tid,
-		       td[currentcpu->thread.tid].state);
+		       currentcpu->tid, td[currentcpu->tid].state);
 	}
 	schedule ();
 }
@@ -281,7 +279,7 @@ thread_init_global (void)
 
 	LIST1_HEAD_INIT (td_free);
 	LIST1_HEAD_INIT (td_runnable);
-	ticketlock_init (&thread_lock);
+	spinlock_init (&thread_lock);
 	old_stack = NULL;
 	for (i = 0; i < MAXNUM_OF_THREADS; i++) {
 		td[i].tid = i;
@@ -295,13 +293,13 @@ thread_init_pcpu (void)
 {
 	struct thread_data *d;
 
-	ticketlock_lock (&thread_lock);
+	spinlock_lock (&thread_lock);
 	d = LIST1_POP (td_free);
 	ASSERT (d);
 	thread_data_init (d, NULL, NULL, currentcpu->cpunum);
 	d->boot = true;
-	currentcpu->thread.tid = d->tid;
-	ticketlock_unlock (&thread_lock);
+	currentcpu->tid = d->tid;
+	spinlock_unlock (&thread_lock);
 }
 
 INITFUNC ("global3", thread_init_global);

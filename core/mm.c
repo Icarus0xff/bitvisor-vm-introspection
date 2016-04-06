@@ -60,7 +60,6 @@
 #define ALLOCLIST_HEADERSIZE(n)	(sizeof (struct allocdata) + \
 				 ALLOCLIST_DATASIZE(n) - 1)
 #define MAXNUM_OF_SYSMEMMAP	256
-#define NUM_OF_PANICMEM_PAGES	256
 
 #ifdef __x86_64__
 #	define PDPE_ATTR		(PDE_P_BIT | PDE_RW_BIT | PDE_US_BIT)
@@ -153,7 +152,6 @@ static u64 vmm_pd2[512] __attribute__ ((aligned (PAGESIZE)));
 static phys_t process_virt_to_phys_pdp_phys;
 static u64 *process_virt_to_phys_pdp;
 static u64 hphys_len;
-static int panicmem_start_page;
 
 #define E801_16MB 0x1000000
 #define E801_AX_MAX 0x3C00
@@ -458,6 +456,30 @@ find_realmodemem (void)
 	}
 }
 
+int
+virt_to_phys (virt_t virt, phys_t *phys)
+{
+        u64 pte;
+        int r = -1;
+        pmap_t m;
+
+        spinlock_lock (&mm_lock_process_virt_to_phys);
+        ulong cr3;
+
+        asm_rdcr3 (&cr3);
+        pmap_open_vmm (&m, cr3, PMAP_LEVELS);
+        pmap_seek (&m, virt, 1);
+        pte = pmap_read (&m);
+        if (pte & PTE_P_BIT) {
+                *phys = (pte & PTE_ADDR_MASK) | (virt & ~PTE_ADDR_MASK);
+                r = 0;
+        }
+        pmap_close (&m);
+        spinlock_unlock (&mm_lock_process_virt_to_phys);
+        return r;
+}
+
+
 static struct page *
 virt_to_page (virt_t virt)
 {
@@ -508,7 +530,6 @@ mm_page_alloc (int n)
 	int s;
 	virt_t virt;
 	struct page *p, *q;
-	enum page_type old_type;
 
 	ASSERT (n < NUM_OF_ALLOCSIZE);
 	s = allocsize[n];
@@ -525,16 +546,8 @@ mm_page_alloc (int n)
 		LIST1_ADD (list1_freepage[n], p);
 		LIST1_ADD (list1_freepage[n], q);
 	}
-	/* p->type must be set before unlock, because the
-	 * mm_page_free() function may merge blocks if the type is
-	 * PAGE_TYPE_FREE. */
-	old_type = p->type;
-	p->type = PAGE_TYPE_ALLOCATED;
 	spinlock_unlock (&mm_lock);
-	/* The old_type must be PAGE_TYPE_FREE, or the memory will be
-	 * corrupted.  The ASSERT is called after unlock to avoid
-	 * deadlocks during panic. */
-	ASSERT (old_type == PAGE_TYPE_FREE);
+	p->type = PAGE_TYPE_ALLOCATED;
 	return p;
 }
 
@@ -804,46 +817,24 @@ mm_init_global (void)
 		pagestruct[i].phys = vmm_start_phys + PAGESIZE * i;
 		pagestruct[i].virt = VMM_START_VIRT + PAGESIZE * i;
 	}
-	panicmem_start_page = ((u64)(virt_t)end + PAGESIZE - 1 -
-			       VMM_START_VIRT) >> PAGESIZE_SHIFT;
 	for (i = 0; i < NUM_OF_PAGES; i++) {
 		if ((u64)(virt_t)head <= pagestruct[i].virt &&
 		    pagestruct[i].virt < (u64)(virt_t)end)
 			continue;
-		if (i < panicmem_start_page + NUM_OF_PANICMEM_PAGES)
+#ifdef FWDBG
+		if (i == 0) {
+			extern char *dbgpage;
+			dbgpage = (char *)pagestruct[i].virt;
+			snprintf (dbgpage, PAGESIZE, "BitVisor dbgpage\n");
 			continue;
+		}
+#endif
 		mm_page_free (&pagestruct[i]);
 	}
 	mapmem_lastvirt = MAPMEM_ADDR_START;
 	map_hphys ();
 	unmap_user_area ();	/* for detecting null pointer */
 	process_virt_to_phys_prepare ();
-}
-
-/* panicmem is reserved memory for panic */
-void *
-mm_get_panicmem (int *len)
-{
-	int s = panicmem_start_page;
-
-	if (!s)
-		return NULL;
-	if (len)
-		*len = NUM_OF_PANICMEM_PAGES << PAGESIZE_SHIFT;
-	return (void *)pagestruct[s].virt;
-}
-
-void
-mm_free_panicmem (void)
-{
-	int s = panicmem_start_page;
-	int i;
-
-	if (!s)
-		return;
-	panicmem_start_page = 0;
-	for (i = 0; i < NUM_OF_PANICMEM_PAGES; i++)
-		mm_page_free (&pagestruct[s + i]);
 }
 
 /* allocate n or more pages */

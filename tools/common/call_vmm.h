@@ -1,6 +1,5 @@
-#include <stdint.h>
 #define CALL_VMM_GET_FUNCTION(name, ret) do { \
-	intptr_t call_vmm__addr0, call_vmm__addr1; \
+	unsigned long call_vmm__addr0, call_vmm__addr1; \
  \
 	asm volatile ("jmp 2f\n" \
 		      "0: vmcall; jmp *%1; .org 0b+5; vmmcall; jmp *%1;" \
@@ -19,11 +18,11 @@ typedef struct {
 } call_vmm_function_t;
 
 typedef struct {
-	intptr_t rbx, rcx, rdx, rsi, rdi;
+	long rbx, rcx, rdx, rsi, rdi;
 } call_vmm_arg_t;
 
 typedef struct {
-	intptr_t rax, rbx, rcx, rdx, rsi, rdi;
+	long rax, rbx, rcx, rdx, rsi, rdi;
 } call_vmm_ret_t;
 
 static inline int
@@ -39,7 +38,7 @@ call_vmm_function_callable (call_vmm_function_t *f)
 }
 
 int call_vmm_docall (void (*func) (void *data), void *data);
-void call_vmm_get_function (intptr_t addr0, intptr_t addr1,
+void call_vmm_get_function (unsigned long addr0, unsigned long addr1,
 			    int aoff, int off, call_vmm_function_t *function);
 void call_vmm_call_function (call_vmm_function_t *function,
 			     call_vmm_arg_t *arg, call_vmm_ret_t *ret);

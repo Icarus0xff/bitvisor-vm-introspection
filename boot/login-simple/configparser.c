@@ -270,45 +270,6 @@ mac_addr (char **name, void **val, int *len)
 	*len = sizeof mac_address;
 }
 
-static int
-conv_ipv4addr (char *str)
-{
-	char *p;
-	int ret = 0, shift = 32, tmp;
-
-	tmp = (int)strtol (str, &p, 0);
-	while (*p == '.' && shift) {
-		ret |= (tmp & 255) << (shift -= 8);
-		tmp = (int)strtol (p + 1, &p, 0) & ((1 << shift) - 1);
-	}
-	if (*p != '\0' || !shift) {
-		fprintf (stderr, "invalid IPv4 address\n");
-		exit (EXIT_FAILURE);
-	}
-	return ret | tmp;
-}
-
-static void
-ipv4_addr (char **name, void **val, int *len)
-{
-	u8 ipv4_address[4];
-	int addr;
-
-	addr = conv_ipv4addr (*val);
-	ipv4_address[0] = addr >> 24;
-	ipv4_address[1] = addr >> 16;
-	ipv4_address[2] = addr >> 8;
-	ipv4_address[3] = addr;
-	free (*val);
-	*val = malloc (sizeof ipv4_address);
-	if (!*val) {
-		perror ("malloc");
-		exit (EXIT_FAILURE);
-	}
-	memcpy (*val, &ipv4_address, sizeof ipv4_address);
-	*len = sizeof ipv4_address;
-}
-
 static void
 noconv (char **name, void **val, int *len)
 {
@@ -382,11 +343,6 @@ setconfig (char *name, char *value, struct config_data *cfg)
 	ss (file, &name, &src, &len, "vpn.vpnCertFileV6", "vpn.vpnCertV6");
 	ss (file, &name, &src, &len, "vpn.vpnCaCertFileV6", "vpn.vpnCaCertV6");
 	ss (file, &name, &src, &len, "vpn.vpnRsaKeyFileV6", "vpn.vpnRsaKeyV6");
-	/* TCP/IP */
-	ss (ipv4_addr, &name, &src, &len, "ip.ipaddr", "ip.ipaddr");
-	ss (ipv4_addr, &name, &src, &len, "ip.netmask", "ip.netmask");
-	ss (ipv4_addr, &name, &src, &len, "ip.gateway", "ip.gateway");
-	ss (uintnum, &name, &src, &len, "ip.use_dhcp", "ip.use_dhcp");
 	/* storage */
 	for (i = 0; i < NUM_OF_STORAGE_KEYS; i++)
 		ssi (keyplace, &name, &src, &len,
@@ -417,8 +373,6 @@ setconfig (char *name, char *value, struct config_data *cfg)
 	ss (uintnum, &name, &src, &len, "vmm.f11panic", "vmm.f11panic");
 	ss (uintnum, &name, &src, &len, "vmm.f12msg", "vmm.f12msg");
 	ss (uintnum, &name, &src, &len, "vmm.auto_reboot", "vmm.auto_reboot");
-	ss (uintnum, &name, &src, &len, "vmm.panic_reboot",
-	    "vmm.panic_reboot");
 	ss (uintnum, &name, &src, &len, "vmm.shell", "vmm.shell");
 	ss (uintnum, &name, &src, &len, "vmm.dbgsh", "vmm.dbgsh");
 	ss (uintnum, &name, &src, &len, "vmm.status", "vmm.status");
@@ -427,20 +381,12 @@ setconfig (char *name, char *value, struct config_data *cfg)
 	    "vmm.no_intr_intercept");
 	ss (uintnum, &name, &src, &len, "vmm.ignore_tsc_invariant",
 	    "vmm.ignore_tsc_invariant");
-	ss (uintnum, &name, &src, &len, "vmm.unsafe_nested_virtualization",
-	    "vmm.unsafe_nested_virtualization");
-	ss (mac_addr, &name, &src, &len, "vmm.tty_mac_address",
-	    "vmm.tty_mac_address");
-	ss (uintnum, &name, &src, &len, "vmm.tty_syslog.enable",
-	    "vmm.tty_syslog.enable");
-	ss (ipv4_addr, &name, &src, &len, "vmm.tty_syslog.src_ipaddr",
-	    "vmm.tty_syslog.src_ipaddr");
-	ss (ipv4_addr, &name, &src, &len, "vmm.tty_syslog.dst_ipaddr",
-	    "vmm.tty_syslog.dst_ipaddr");
 	ss (uintnum, &name, &src, &len, "vmm.tty_pro1000", "vmm.tty_pro1000");
+	ss (mac_addr, &name, &src, &len, "vmm.tty_pro1000_mac_address",
+	    "vmm.tty_pro1000_mac_address");
 	ss (uintnum, &name, &src, &len, "vmm.tty_rtl8169", "vmm.tty_rtl8169");
-	ss (uintnum, &name, &src, &len, "vmm.tty_x540", "vmm.tty_x540");
-	ss (uintnum, &name, &src, &len, "vmm.tty_ieee1394", "vmm.tty_ieee1394");
+	ss (mac_addr, &name, &src, &len, "vmm.tty_rtl8169_mac_address",
+	    "vmm.tty_rtl8169_mac_address");
 	ss (uintnum, &name, &src, &len, "vmm.driver.ata", "vmm.driver.ata");
 	ss (uintnum, &name, &src, &len, "vmm.driver.usb.uhci", "vmm.driver.usb.uhci");
 	ss (uintnum, &name, &src, &len, "vmm.driver.usb.ehci", "vmm.driver.usb.ehci");
@@ -450,8 +396,6 @@ setconfig (char *name, char *value, struct config_data *cfg)
 	    "vmm.driver.conceal1394");
 	ss (uintnum, &name, &src, &len, "vmm.driver.concealPRO1000",
 	    "vmm.driver.concealPRO1000");
-	ss (uintnum, &name, &src, &len, "vmm.driver.vga_intel",
-	    "vmm.driver.vga_intel");
 	ss (uintnum, &name, &src, &len, "vmm.driver.vpn.PRO100",
 	    "vmm.driver.vpn.PRO100");
 	ss (uintnum, &name, &src, &len, "vmm.driver.vpn.PRO1000",
@@ -554,11 +498,6 @@ setconfig (char *name, char *value, struct config_data *cfg)
 	CONF (vpn.vpnPingTargetV6);
 	CONF (vpn.vpnPingIntervalV6);
 	CONF (vpn.vpnPingMsgSizeV6);
-	/* TCP/IP */
-	CONF (ip.ipaddr);
-	CONF (ip.netmask);
-	CONF (ip.gateway);
-	CONF (ip.use_dhcp);
 	/* storage */
 	for (i = 0; i < NUM_OF_STORAGE_KEYS; i++)
 		CONF1 ("storage.keys[%d]", i, cfg->storage.keys[i]);
@@ -588,35 +527,27 @@ setconfig (char *name, char *value, struct config_data *cfg)
 	CONF (vmm.f11panic);
 	CONF (vmm.f12msg);
 	CONF (vmm.auto_reboot);
-	CONF (vmm.panic_reboot);
 	CONF (vmm.shell);
 	CONF (vmm.dbgsh);
 	CONF (vmm.status);
 	CONF (vmm.boot_active);
 	CONF (vmm.no_intr_intercept);
 	CONF (vmm.ignore_tsc_invariant);
-	CONF (vmm.unsafe_nested_virtualization);
-	CONF (vmm.tty_mac_address);
-	CONF (vmm.tty_syslog.enable);
-	CONF (vmm.tty_syslog.src_ipaddr);
-	CONF (vmm.tty_syslog.dst_ipaddr);
 	CONF (vmm.tty_pro1000);
+	CONF (vmm.tty_pro1000_mac_address);
 	CONF (vmm.tty_rtl8169);
-	CONF (vmm.tty_x540);
-	CONF (vmm.tty_ieee1394);
+	CONF (vmm.tty_rtl8169_mac_address);
 	CONF (vmm.driver.ata);
 	CONF (vmm.driver.usb.uhci);
 	CONF (vmm.driver.usb.ehci);
 	CONF (vmm.driver.concealEHCI);
 	CONF (vmm.driver.conceal1394);
 	CONF (vmm.driver.concealPRO1000);
-	CONF (vmm.driver.vga_intel);
 	CONF (vmm.driver.vpn.PRO100);
 	CONF (vmm.driver.vpn.PRO1000);
 	CONF (vmm.driver.vpn.RTL8169);
 	CONF (vmm.driver.vpn.ve);
 	CONF (vmm.driver.pci_conceal);
-	CONF (vmm.driver.pci);
 	CONF (vmm.iccard.enable);
 	CONF (vmm.iccard.status);
 	if (!dst) {

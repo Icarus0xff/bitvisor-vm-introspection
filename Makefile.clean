@@ -21,10 +21,8 @@ subclean_p += $(asubdirs-:%=$(dir)%/$(clean_p))
 subclean_p += $(psubdirs-1:%=$(dir)%/$(clean_p))
 subclean_p += $(psubdirs-0:%=$(dir)%/$(clean_p))
 subclean_p += $(psubdirs-:%=$(dir)%/$(clean_p))
-make-detect := b$(shell echo g)
-m-b := b
-m-bg := g
-m := $(m-$(make-detect))
+m!=echo b
+m ?= g
 bins-1 ?=
 bobjs-1-name := $(bins-1:%=%-objs)
 bobjs-1-b := $(bobjs-1-name:%=$(%))

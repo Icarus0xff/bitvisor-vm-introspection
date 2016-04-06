@@ -46,10 +46,23 @@ builtin_reboot ()
 		printf ("reboot not found.\n");
 }
 
+void test(){
+  int d;
+
+  d = msgopen("test");
+  if(d >= 0) {
+    msgsendint(d, 0);
+    msgclose(d);
+    printf("Test tested.\n");
+  } else
+    printf("test not found.\n");
+  
+}
+
 int
 _start (int a1, int a2)
 {
-	int d;
+        int d;
 	char buf[100];
 
 	for (;;) {

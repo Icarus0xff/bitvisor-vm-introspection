@@ -41,5 +41,6 @@ void vt_ept_updatecr3 (void);
 void vt_ept_clear_all (void);
 bool vt_ept_extern_mapsearch (struct vcpu *p, phys_t start, phys_t end);
 void vt_ept_map_1mb (void);
-
+int vt_ept_set_mem_region(u64 gphys, int count);
+void vt_ept_map_page_privilege (bool write, u64 gphys);
 #endif

@@ -34,24 +34,15 @@
 #include <core/process.h>
 #include <core/time.h>
 #include <core/timer.h>
-#include <net/netapi.h>
+#include <core/vpnsys.h>
 #include <IDMan.h>
-#include <Se/Se.h>
 #include "vpn_msg.h"
 
 #define NUM_OF_HANDLE 32
 
-struct vpncallback {
-	SE_HANDLE nic_handle;
-	SE_SYS_CALLBACK_RECV_NIC *callback;
-	void *param;
-};
-
-struct vpndata {
-	SE_HANDLE vpn_handle;
-	void *ph, *vh;
-	struct nicfunc pf, vf;
-	struct vpncallback pc, vc;
+struct nicdata {
+	SE_HANDLE ph, vh;
+	struct nicfunc func;
 };
 
 #ifdef VPN_PD
@@ -162,17 +153,6 @@ sendphysicalnicrecv_premap (SE_HANDLE nic_handle, UINT num_packets,
 }
 
 static void
-sendphysicalnicrecv_wrapper (void *handle, unsigned int num_packets,
-			     void **packets, unsigned int *packet_sizes,
-			     void *param, long *premap)
-{
-	struct vpncallback *c = param;
-
-	sendphysicalnicrecv_premap (c->nic_handle, num_packets, packets,
-				    packet_sizes, c->param, premap);
-}
-
-static void
 sendphysicalnicrecv (SE_HANDLE nic_handle, UINT num_packets, void **packets,
 		     UINT *packet_sizes, void *param)
 {
@@ -208,17 +188,6 @@ sendvirtualnicrecv_premap (SE_HANDLE nic_handle, UINT num_packets,
 	callsub (VPN_MSG_VIRTUALNICRECV, buf, num_packets + 1);
 	free (buf);
 	mempool_freemem (mp, arg);
-}
-
-static void
-sendvirtualnicrecv_wrapper (void *handle, unsigned int num_packets,
-			    void **packets, unsigned int *packet_sizes,
-			    void *param, long *premap)
-{
-	struct vpncallback *c = param;
-
-	sendvirtualnicrecv_premap (c->nic_handle, num_packets, packets,
-				   packet_sizes, c->param, premap);
 }
 
 static void
@@ -476,35 +445,19 @@ vpn_FreeTimer (SE_HANDLE timer_handle)
 void
 vpn_GetPhysicalNicInfo (SE_HANDLE nic_handle, SE_NICINFO *info)
 {
-	struct vpndata *vpn = nic_handle;
-	struct nicinfo nic;
-	int i;
+	struct nicdata *nic = nic_handle;
 
-	vpn->pf.get_nic_info (vpn->ph, &nic);
-	for (i = 0; i < 6; i++)
-		info->MacAddress[i] = nic.mac_address[i];
-	info->Mtu = nic.mtu;
-	info->MediaType = SE_MEDIA_TYPE_ETHERNET;
-	info->MediaSpeed = nic.media_speed;
+	nic->func.GetPhysicalNicInfo (nic->ph, info);
 }
 
 void
 vpn_SendPhysicalNic (SE_HANDLE nic_handle, UINT num_packets, void **packets,
 		     UINT *packet_sizes)
 {
-	struct vpndata *vpn = nic_handle;
+	struct nicdata *nic = nic_handle;
 
-	vpn->pf.send (vpn->ph, num_packets, packets, packet_sizes, true);
-}
-
-static void
-vpn_callback_wrapper (void *handle, unsigned int num_packets, void **packets,
-		      unsigned int *packet_sizes, void *param, long *premap)
-{
-	struct vpncallback *c = param;
-
-	c->callback (c->nic_handle, num_packets, packets, packet_sizes,
-		     c->param);
+	nic->func.SendPhysicalNic (nic->ph, num_packets, packets,
+				   packet_sizes);
 }
 
 void
@@ -512,68 +465,71 @@ vpn_SetPhysicalNicRecvCallback (SE_HANDLE nic_handle,
 				SE_SYS_CALLBACK_RECV_NIC *callback,
 				void *param)
 {
-	struct vpndata *vpn = nic_handle;
+	struct nicdata *nic = nic_handle;
 
-	vpn->pc.nic_handle = nic_handle;
-	vpn->pc.callback = callback;
-	vpn->pc.param = param;
-#ifdef VPN_PD
-	if (callback == sendphysicalnicrecv) {
-		vpn->pf.set_recv_callback (vpn->ph,
-					   sendphysicalnicrecv_wrapper,
-					   &vpn->pc);
-		return;
-	}
-#endif /* VPN_PD */
-	vpn->pf.set_recv_callback (vpn->ph, vpn_callback_wrapper, &vpn->pc);
+	nic->func.SetPhysicalNicRecvCallback (nic->ph, callback, param);
 }
 
 void
 vpn_GetVirtualNicInfo (SE_HANDLE nic_handle, SE_NICINFO *info)
 {
-	struct vpndata *vpn = nic_handle;
-	struct nicinfo nic;
-	int i;
+	struct nicdata *nic = nic_handle;
 
-	vpn->vf.get_nic_info (vpn->vh, &nic);
-	for (i = 0; i < 6; i++)
-		info->MacAddress[i] = nic.mac_address[i];
-	info->Mtu = nic.mtu;
-	info->MediaType = SE_MEDIA_TYPE_ETHERNET;
-	info->MediaSpeed = nic.media_speed;
+	nic->func.GetVirtualNicInfo (nic->vh, info);
 }
 
 void
 vpn_SendVirtualNic (SE_HANDLE nic_handle, UINT num_packets, void **packets,
 		    UINT *packet_sizes)
 {
-	struct vpndata *vpn = nic_handle;
+	struct nicdata *nic = nic_handle;
 
-	vpn->vf.send (vpn->vh, num_packets, packets, packet_sizes, true);
+	nic->func.SendVirtualNic (nic->vh, num_packets, packets, packet_sizes);
 }
 
 void
 vpn_SetVirtualNicRecvCallback (SE_HANDLE nic_handle,
 			       SE_SYS_CALLBACK_RECV_NIC *callback, void *param)
 {
-	struct vpndata *vpn = nic_handle;
+	struct nicdata *nic = nic_handle;
 
-	vpn->vc.nic_handle = nic_handle;
-	vpn->vc.callback = callback;
-	vpn->vc.param = param;
+	nic->func.SetVirtualNicRecvCallback (nic->vh, callback, param);
+}
+
+void
+vpn_premap_PhysicalNicRecv (SE_SYS_CALLBACK_RECV_NIC *callback,
+			    SE_HANDLE nic_handle, UINT num_packets,
+			    void **packets, UINT *packet_sizes, void *param,
+			    long *premap)
+{
 #ifdef VPN_PD
-	if (callback == sendvirtualnicrecv) {
-		vpn->vf.set_recv_callback (vpn->vh,
-					   sendvirtualnicrecv_wrapper,
-					   &vpn->vc);
+	if (callback == sendphysicalnicrecv) {
+		sendphysicalnicrecv_premap (nic_handle, num_packets, packets,
+					    packet_sizes, param, premap);
 		return;
 	}
 #endif /* VPN_PD */
-	vpn->vf.set_recv_callback (vpn->vh, vpn_callback_wrapper, &vpn->vc);
+	callback (nic_handle, num_packets, packets, packet_sizes, param);
 }
 
-static long
-vpn_premap_recvbuf (void *handle, void *buf, unsigned int len)
+void
+vpn_premap_VirtualNicRecv (SE_SYS_CALLBACK_RECV_NIC *callback,
+			   SE_HANDLE nic_handle, UINT num_packets,
+			   void **packets, UINT *packet_sizes, void *param,
+			   long *premap)
+{
+#ifdef VPN_PD
+	if (callback == sendvirtualnicrecv) {
+		sendvirtualnicrecv_premap (nic_handle, num_packets, packets,
+					   packet_sizes, param, premap);
+		return;
+	}
+#endif /* VPN_PD */
+	callback (nic_handle, num_packets, packets, packet_sizes, param);
+}
+
+long
+vpn_premap_recvbuf (void *buf, unsigned int len)
 {
 #ifdef VPN_PD
 	struct msgbuf mbuf;
@@ -610,44 +566,21 @@ vpn_ic_rsa_sign (char *key_name, void *data, UINT data_size, void *sign,
 	return false;
 }
 
-static void *
-vpn_new_nic (char *arg, void *param)
+SE_HANDLE
+vpn_new_nic (SE_HANDLE ph, SE_HANDLE vh, struct nicfunc *func)
 {
-	struct vpndata *p;
+	struct nicdata *p;
 
+#ifdef VPN_PASS_MODE
+	pass_init (ph, vh, func);
+	return "PASS MODE";
+#endif /* VPN_PASS_MODE */
 	p = alloc (sizeof *p);
-	return p;
+	p->ph = ph;
+	p->vh = vh;
+	memcpy (&p->func, func, sizeof *func);
+	return vpn_start (p);
 }
-
-static bool
-vpn_init (void *handle, void *phys_handle, struct nicfunc *phys_func,
-	  void *virt_handle, struct nicfunc *virt_func)
-{
-	struct vpndata *p = handle;
-
-	if (!virt_func)
-		return false;
-	p->ph = phys_handle;
-	p->pf = *phys_func;
-	p->vh = virt_handle;
-	p->vf = *virt_func;
-	return true;
-}
-
-static void
-vpn_net_start (void *handle)
-{
-	struct vpndata *p = handle;
-
-	p->vpn_handle = vpn_start (p);
-}
-
-static struct netfunc vpn_func = {
-	.new_nic = vpn_new_nic,
-	.init = vpn_init,
-	.start = vpn_net_start,
-	.premap_recvbuf = vpn_premap_recvbuf,
-};
 
 static void
 vpn_kernel_init (void)
@@ -672,7 +605,6 @@ vpn_kernel_init (void)
 	if (desc < 0)
 		panic ("open vpn");
 #endif
-	net_register ("vpn", &vpn_func, NULL);
 }
 
 INITFUNC ("driver1", vpn_kernel_init);
